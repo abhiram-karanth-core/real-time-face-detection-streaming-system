@@ -22,6 +22,7 @@ export default function App() {
   const [roiHistory, setRoiHistory] = useState<ROI[]>([]);
   const [latestROI, setLatestROI]   = useState<ROI | null>(null);
   const [error, setError]           = useState<string | null>(null);
+  const [cameraUnavailable, setCameraUnavailable] = useState(false);
 
 
   const startWebcam = useCallback(async () => {
@@ -34,8 +35,13 @@ export default function App() {
         webcamRef.current.srcObject = stream;
         await webcamRef.current.play();
       }
-    } catch (err) {
-      setError("Camera access denied. Please allow camera permissions.");
+    } catch (err: any) {
+      if (err?.name === "NotReadableError") {
+        setError("Camera is already in use by another application or browser.");
+        setCameraUnavailable(true);
+      } else {
+        setError("Camera access denied. Please allow camera permissions.");
+      }
     }
   }, []);
 
@@ -84,11 +90,15 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
+      // Guard: skip until the camera stream has real dimensions.
+      // videoWidth/videoHeight are 0 until the stream is fully initialised.
+      // Sending a 0×0 canvas produces bytes Pillow cannot identify as an image.
+      if (!video.videoWidth || !video.videoHeight) return;
+
       canvas.width  = video.videoWidth;
       canvas.height = video.videoHeight;
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
 
       const dataUrl  = canvas.toDataURL("image/jpeg", 0.8);
       const base64   = dataUrl.split(",")[1];
@@ -180,7 +190,11 @@ export default function App() {
       {}
       <div style={styles.controls}>
         {status === "disconnected" || status === "error" ? (
-          <button style={styles.btn} onClick={connect}>
+          <button
+            style={{ ...styles.btn, ...(cameraUnavailable ? styles.btnDisabled : {}) }}
+            onClick={connect}
+            disabled={cameraUnavailable}
+          >
             Start streaming
           </button>
         ) : (
@@ -188,7 +202,11 @@ export default function App() {
             Stop
           </button>
         )}
-        <button style={{ ...styles.btn, background: "#2980b9" }} onClick={fetchROIHistory}>
+        <button
+          style={{ ...styles.btn, background: "#2980b9", ...(cameraUnavailable ? styles.btnDisabled : {}) }}
+          onClick={fetchROIHistory}
+          disabled={cameraUnavailable}
+        >
           Fetch ROI history
         </button>
       </div>
@@ -249,6 +267,7 @@ const styles: Record<string, React.CSSProperties> = {
   hidden:    { display: "none" },
   controls:  { display: "flex", gap: 10, margin: "16px 0" },
   btn:       { padding: "8px 18px", background: "#27ae60", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 14 },
+  btnDisabled: { background: "#aaa", cursor: "not-allowed", opacity: 0.6 },
   roiBox:    { background: "#f8f8f8", borderRadius: 6, padding: 12, marginBottom: 16 },
   pre:       { margin: 0, fontSize: 12 },
   table:     { overflowX: "auto" },
