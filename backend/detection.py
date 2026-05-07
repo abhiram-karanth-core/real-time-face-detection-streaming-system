@@ -8,15 +8,27 @@ from PIL import Image, ImageDraw
 import numpy as np
 
 
-#initialise mediapipe's face detector once at module level.
-#this avoids re-loading the model on every frame - it's expensive (~100ms).
-#min_detection_confidence=0.5 means we only accept detections the model is
-#at least 50% confident about.
-_mp_face = mp.solutions.face_detection
-_detector = _mp_face.FaceDetection(min_detection_confidence=0.5)
+# MediaPipe's FaceDetection is NOT thread-safe.
+# asyncio.to_thread() runs process_frame in a thread-pool, so with multiple
+# concurrent WebSocket streams, several threads could call _detector.process()
+# simultaneously — causing corrupted results or crashes.
+#
+# threading.local() gives each thread its own independent detector instance.
+# The first time a thread calls _get_detector() it creates one; after that
+# it reuses the same object for every frame on that thread.
+import threading
+_mp_face   = mp.solutions.face_detection
+_thread_local = threading.local()
+
+def _get_detector() -> _mp_face.FaceDetection:
+    if not hasattr(_thread_local, "detector"):
+        _thread_local.detector = _mp_face.FaceDetection(min_detection_confidence=0.5)
+    return _thread_local.detector
 
 
 def process_frame(base64_frame: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+    if "," in base64_frame:
+        base64_frame = base64_frame.split(",")[1]
     #decode base64 -> raw bytes -> PIL Image
     img_bytes = base64.b64decode(base64_frame)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
@@ -26,7 +38,7 @@ def process_frame(base64_frame: str) -> Tuple[str, Optional[Dict[str, Any]]]:
     #calculations cant be done on PIL image, so convert to numpy array and
     # pass to mediapipe.  
     img_np = np.array(img)
-    results = _detector.process(img_np) 
+    results = _get_detector().process(img_np)
 
     roi = None
 
