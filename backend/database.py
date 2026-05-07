@@ -1,0 +1,74 @@
+import os
+import uuid
+from typing import List, Dict, Any
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import select
+
+from models import Base, ROIData
+
+
+DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/face_detection"
+
+ASYNC_DATABASE_URL = DATABASE_URL.replace(
+    "postgresql://",
+    "postgresql+asyncpg://"
+)
+
+engine = create_async_engine(ASYNC_DATABASE_URL, pool_pre_ping=True, echo=False)
+
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def init_db() -> None:
+    """Create all tables on startup if they don't already exist."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def get_db() -> AsyncSession:
+    """
+    FastAPI dependency — yields a DB session and closes it when the
+    request/WebSocket handler finishes, even on exceptions.
+    """
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+async def store_roi(session: AsyncSession, session_id: str, roi: Dict[str, Any]) -> None:
+    """Insert one ROI row. Called by the frame worker after each detection."""
+    record = ROIData(
+        session_id=uuid.UUID(session_id),
+        frame_id=uuid.UUID(roi["frame_id"]),
+        x=roi["x"],
+        y=roi["y"],
+        width=roi["width"],
+        height=roi["height"],
+        confidence=roi.get("confidence"),
+    )
+    session.add(record)
+    await session.commit()
+
+
+async def get_roi_by_session(session: AsyncSession, session_id: str) -> List[Dict[str, Any]]:
+    """Return all ROI rows for a session, ordered oldest-first."""
+    result = await session.execute(
+        select(ROIData)
+        .where(ROIData.session_id == uuid.UUID(session_id))
+        .order_by(ROIData.detected_at)
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "session_id": str(r.session_id),
+            "frame_id": str(r.frame_id),
+            "x": r.x,
+            "y": r.y,
+            "width": r.width,
+            "height": r.height,
+            "confidence": r.confidence,
+            "detected_at": r.detected_at.isoformat() if r.detected_at else None,
+        }
+        for r in rows
+    ]
