@@ -2,13 +2,13 @@ import asyncio
 import os
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import init_db, get_db, get_roi_by_session
+from database import init_db, get_db, get_roi_by_session, get_all_sessions
 from worker import frame_worker
 
 
@@ -31,8 +31,35 @@ app.add_middleware(
 )
 
 
-@app.websocket("/ws/stream")
-async def stream(
+class ConnectionManager:
+    def __init__(self):
+        self.active_sessions: dict[str, list[asyncio.Queue]] = {}
+
+    def subscribe(self, session_id: str, queue: asyncio.Queue):
+        if session_id not in self.active_sessions:
+            self.active_sessions[session_id] = []
+        self.active_sessions[session_id].append(queue)
+
+    def unsubscribe(self, session_id: str, queue: asyncio.Queue):
+        if session_id in self.active_sessions:
+            try:
+                self.active_sessions[session_id].remove(queue)
+            except ValueError:
+                pass
+            if not self.active_sessions[session_id]:
+                del self.active_sessions[session_id]
+
+    async def broadcast(self, session_id: str, frame_data: str):
+        if session_id in self.active_sessions:
+            for q in self.active_sessions[session_id]:
+                if not q.full():
+                    await q.put(frame_data)
+
+manager = ConnectionManager()
+
+
+@app.websocket("/ws/stream/in")
+async def stream_in(
     websocket: WebSocket,
     session_id: str = Query(default=None),
     db: AsyncSession = Depends(get_db),
@@ -51,7 +78,7 @@ async def stream(
     # Each connection gets its own private queue so frames from different
     # browser sessions are never mixed together.
     local_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
-    worker_task = asyncio.create_task(frame_worker(websocket, db, local_queue))
+    worker_task = asyncio.create_task(frame_worker(db, local_queue, manager.broadcast))
 
     try:
         while True:
@@ -71,18 +98,47 @@ async def stream(
         try:
             await worker_task
         except asyncio.CancelledError:
-            pass  
+            pass
+
+
+@app.websocket("/ws/stream/out")
+async def stream_out(
+    websocket: WebSocket,
+    session_id: str = Query(..., description="UUID of the streaming session"),
+):
+    await websocket.accept()
+
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        await websocket.close(code=1008)
+        return
+
+    out_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+    manager.subscribe(session_id, out_queue)
+
+    try:
+        while True:
+            frame_data = await out_queue.get()
+            await websocket.send_text(frame_data)
+    except WebSocketDisconnect:
+        manager.unsubscribe(session_id, out_queue)
 
 
 @app.get("/roi")
 async def get_roi(
-    session_id: str = Query(..., description="UUID of the streaming session"),
+    session_id: Optional[str] = Query(default=None, description="UUID of the streaming session"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Returns all bounding boxes detected during a session, ordered by time.
+    If session_id is omitted, returns a list of all available session_ids.
     Example: GET /roi?session_id=<uuid>
     """
+    if not session_id:
+        sessions = await get_all_sessions(db)
+        return {"sessions": sessions, "count": len(sessions)}
+
     try:
         uuid.UUID(session_id)  # validate format before hitting the DB
     except ValueError:
