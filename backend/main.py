@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     await init_db()
     yield
 
-app = FastAPI(title="MegaAI Face Detection API", lifespan=lifespan)
+app = FastAPI(title="Real-Time Face Detection API", lifespan=lifespan)
 
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
