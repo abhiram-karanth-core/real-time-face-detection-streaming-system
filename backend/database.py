@@ -8,7 +8,10 @@ from sqlalchemy import select
 from models import Base, ROIData
 
 
-DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/face_detection"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@db:5432/face_detection"
+)
 
 ASYNC_DATABASE_URL = DATABASE_URL.replace(
     "postgresql://",
@@ -21,9 +24,17 @@ AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def init_db() -> None:
-    """Create all tables on startup if they don't already exist."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    import asyncio
+    for attempt in range(10):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            print("Database ready.")
+            return
+        except Exception as e:
+            print(f"Waiting for database... (attempt {attempt + 1}/10)")
+            await asyncio.sleep(3)
+    raise RuntimeError("Could not connect to database after 10 attempts.")
 
 
 async def get_db() -> AsyncSession:
