@@ -3,7 +3,7 @@ import uuid
 from typing import List, Dict, Any
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import select
+from sqlalchemy import select, distinct
 
 from models import Base, ROIData
 
@@ -83,3 +83,10 @@ async def get_roi_by_session(session: AsyncSession, session_id: str) -> List[Dic
         }
         for r in rows
     ]
+
+
+async def get_all_sessions(session: AsyncSession) -> List[str]:
+    """Return a list of all distinct session_ids."""
+    result = await session.execute(select(distinct(ROIData.session_id)))
+    rows = result.scalars().all()
+    return [str(r) for r in rows]
