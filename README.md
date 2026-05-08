@@ -88,8 +88,7 @@ docker compose up --build
 ## Running Tests
 
 ```bash
-cd backend
-python -m pytest tests/ -v
+docker compose exec backend python -m pytest tests/ -v
 ```
 
 ## AI Usage Attestation
