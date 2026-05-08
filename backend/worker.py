@@ -23,7 +23,7 @@ from database import store_roi
 frame_queue: asyncio.Queue[Tuple[str, str]] = asyncio.Queue(maxsize=10)
 
 
-async def frame_worker(websocket, db, frame_queue) -> None:
+async def frame_worker(db, frame_queue, broadcast_callback) -> None:
     """
     Consumes frames from frame_queue indefinitely.
     Runs as a background asyncio Task for the lifetime of the WebSocket connection.
@@ -44,10 +44,8 @@ async def frame_worker(websocket, db, frame_queue) -> None:
             if roi:
                 await store_roi(db, session_id, roi)
 
-            # send the annotated frame back to the browser.
-            # we prefix with "data:image/jpeg;base64," so the browser can
-            # drop it directly into an <img> src attribute.
-            await websocket.send_text(f"data:image/jpeg;base64,{annotated_frame}")
+            # send the annotated frame back to the browser via the output endpoint.
+            await broadcast_callback(session_id, f"data:image/jpeg;base64,{annotated_frame}")
 
         except Exception as exc:
 
