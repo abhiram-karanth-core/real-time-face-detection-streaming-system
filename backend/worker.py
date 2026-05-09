@@ -17,10 +17,7 @@ from database import store_roi
 #   The queue decouples them: the receiver keeps running and drops frames
 #   when the queue is full rather than blocking.
 #
-# maxsize=10 — if the detection worker falls behind by more than 10 frames,
-# new frames are dropped. This is an intentional trade-off: we prefer
-# low latency over processing every single frame.
-frame_queue: asyncio.Queue[Tuple[str, str]] = asyncio.Queue(maxsize=10)
+
 
 
 async def frame_worker(db, frame_queue, broadcast_callback) -> None:
@@ -44,13 +41,19 @@ async def frame_worker(db, frame_queue, broadcast_callback) -> None:
             if roi:
                 await store_roi(db, session_id, roi)
 
+        except Exception as exc:
+            # one bad frame shouldn't kill the session - log and move to next frame
+            print(f"[worker] error processing frame: {exc}")
+            frame_queue.task_done()
+            continue
+
+        try:
             # send the annotated frame back to the browser via the output endpoint.
             await broadcast_callback(session_id, f"data:image/jpeg;base64,{annotated_frame}")
-
-        except Exception as exc:
-
-            print(f"[worker] error processing frame: {exc}")
-
-        finally:
-            # Always mark the task done so queue.join() works correctly
+        except Exception:
+            # client disconnected — no point continuing, exit the worker loop
             frame_queue.task_done()
+            break
+
+        # Always mark the task done so queue.join() works correctly
+        frame_queue.task_done()
