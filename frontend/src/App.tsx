@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import WebcamDashboard from './WebcamDashboard';
 import RoiDashboard from './RoiDashboard';
 
@@ -7,8 +7,19 @@ export default function App() {
   return (
     <BrowserRouter>
       <div style={styles.nav}>
-        <Link to="/" style={styles.link}>Webcam Stream</Link>
-        <Link to="/roi" style={styles.link}>ROI History</Link>
+        <NavLink 
+          to="/" 
+          end
+          style={({ isActive }) => isActive ? { ...styles.link, ...styles.activeLink } : styles.link}
+        >
+          Webcam Stream
+        </NavLink>
+        <NavLink 
+          to="/roi" 
+          style={({ isActive }) => isActive ? { ...styles.link, ...styles.activeLink } : styles.link}
+        >
+          ROI History
+        </NavLink>
       </div>
       <Routes>
         <Route path="/" element={<WebcamDashboard />} />
@@ -27,9 +38,16 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
   },
   link: {
-    color: '#fff',
+    color: '#bdc3c7',
     textDecoration: 'none',
     fontWeight: 'bold',
     fontSize: '16px',
+    padding: '8px 16px',
+    borderRadius: '4px',
+    transition: 'all 0.2s ease-in-out',
+  },
+  activeLink: {
+    color: '#fff',
+    backgroundColor: '#34495e',
   }
 };

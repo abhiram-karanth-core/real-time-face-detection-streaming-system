@@ -10,6 +10,7 @@ interface SessionsResponse {
 
 export default function RoiDashboard() {
   const [sessions, setSessions] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [roiHistory, setRoiHistory] = useState<ROI[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,10 +59,17 @@ export default function RoiDashboard() {
       <div style={styles.grid}>
         <div style={styles.sidebar}>
           <h3>Available Sessions</h3>
+          <input
+            type="text"
+            placeholder="Search session ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={styles.searchInput}
+          />
           {loading && !selectedSession && <p>Loading sessions...</p>}
-          {!loading && sessions.length === 0 && <p>No sessions found.</p>}
+          {!loading && sessions.filter(sid => sid.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && <p>No sessions found.</p>}
           <ul style={styles.sessionList}>
-            {sessions.map((sid) => (
+            {sessions.filter(sid => sid.toLowerCase().includes(searchTerm.toLowerCase())).map((sid) => (
               <li
                 key={sid}
                 style={{
@@ -123,7 +131,8 @@ const styles: Record<string, React.CSSProperties> = {
   title: { fontSize: 24, marginBottom: 16 },
   error: { color: "#c0392b", margin: "8px 0" },
   grid: { display: "flex", gap: 24, alignItems: "flex-start" },
-  sidebar: { width: 300, background: "#f8f8f8", borderRadius: 8, padding: 16, border: "1px solid #ddd" },
+  sidebar: { width: 300, background: "#f8f8f8", borderRadius: 8, padding: 16, border: "1px solid #ddd", display: "flex", flexDirection: "column" },
+  searchInput: { padding: "8px 12px", marginBottom: "12px", border: "1px solid #ccc", borderRadius: "4px", width: "100%", boxSizing: "border-box" },
   main: { flex: 1, background: "#fff", borderRadius: 8, padding: 16, border: "1px solid #ddd", minHeight: 400 },
   sessionList: { listStyle: "none", padding: 0, margin: 0, maxHeight: 400, overflowY: "auto" },
   sessionItem: { padding: "10px 12px", borderBottom: "1px solid #eee", cursor: "pointer", fontSize: 14, wordBreak: "break-all" },

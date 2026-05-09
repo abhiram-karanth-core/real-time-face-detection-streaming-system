@@ -214,9 +214,9 @@ export default function WebcamDashboard() {
           </button>
         )}
         <button
-          style={{ ...styles.btn, background: "#2980b9", ...(cameraUnavailable ? styles.btnDisabled : {}) }}
+          style={{ ...styles.btn, background: "#2980b9", ...((cameraUnavailable || status !== "connected") ? styles.btnDisabled : {}) }}
           onClick={fetchROIHistory}
-          disabled={cameraUnavailable}
+          disabled={cameraUnavailable || status !== "connected"}
         >
           Fetch ROI history
         </button>
